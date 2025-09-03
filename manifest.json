@@ -1,0 +1,27 @@
+{
+  "manifest_version": 2,
+  "name": "Audio Summarizer",
+  "version": "1.0",
+  "description": "Captures audio from a tab, transcribes it, and provides a summary.",
+
+  "icons": {
+    "48": "icons/icon.png"
+  },
+
+  "permissions": [
+    "<all_urls>",
+    "tabs",
+    "tabCapture",
+    "http://127.0.0.1:5000/*" 
+  ],
+
+  "browser_action": {
+    "default_icon": "icons/icon.png",
+    "default_title": "Audio Summarizer",
+    "default_popup": "popup.html"
+  },
+
+  "background": {
+    "scripts": ["background.js"]
+  }
+}
