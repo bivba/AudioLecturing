@@ -1,6 +1,6 @@
 import os
 import asyncio
-import whisper
+
 import pandas as pd
 import datetime
 import locale
@@ -17,25 +17,13 @@ locale.setlocale(locale.LC_TIME, "Russian_Russia.1251")
 app = Flask(__name__)
 CORS(app)
 
+bot = TelegramBot()
+
 print('loading model...')
-model = whisper.load_model("base")
+model = Summariser()
 print('model loaded')
 
-bot = TelegramBot()
-print(os.getenv("GOOGLE_API_KEY"))
-summariser = Summariser()
 df = pd.read_csv('schedule.csv', header=None)
-df_time = df[[0, 1]]
-df_time[0] = df[0].fillna(method='ffill')
-df_time[1] = df[1].fillna(method='ffill')
-now = datetime.datetime.now()
-today = now.strftime("%A").capitalize()
-current_time = now.strftime("%H:%M")
-today_sch = df_time[df_time[0] == today]
-today_time = today_sch[today_sch[1] <= current_time].tail(1)
-lesson = df.loc[today_time.index][120]
-if lesson.isna().sum() == 1:
-    lesson = 'Окно'
 
 
 @app.route('/summarize_audio', methods=['POST'])
@@ -48,22 +36,16 @@ def summarize_audio():
     abs_path = os.path.abspath(audio_path)
     print("Saved file to:", abs_path)
 
+    lesson = get_lesson()
+
     # Transcribe the audio file
     try:
-        print('transcribing audio...')
-        result = model.transcribe(abs_path, best_of=3, beam_size=5, fp16=False)
-        asr_out = [result['text']]
-        print('transcription complete')
-
-        if result and result['text']:
-            print('generating summary')
-            summary = summariser.summarize_text(result['text'])
-            print('summary generated')
-            with open(lesson + '.md', "w", encoding="utf-8") as f:
-                f.write(summary)
-            print('sending message to Telegram')
-            with open(lesson + '.md', 'rb') as f:
-                asyncio.run(bot.send_message(f))
+        result = model.summarize_audio(abs_path)
+        if not result:
+            return jsonify({"error": "Failed to generate summary."}), 500
+        
+        print('sending message to Telegram')
+        asyncio.run(bot.send_message(result, lesson + ".md"))
 
     except Exception as e:
         return jsonify({"error": f"Error during transcription: {str(e)}"}), 500
@@ -76,6 +58,21 @@ def summarize_audio():
 
     return jsonify({"text": result})
 
+def get_lesson():
+
+    df_time = df[[0, 1]]
+    df_time[0] = df[0].fillna(method='ffill')
+    df_time[1] = df[1].fillna(method='ffill')
+    now = datetime.datetime.now()
+    today = now.strftime("%A").capitalize()
+    current_time = now.strftime("%H:%M")
+    today_sch = df_time[df_time[0] == today]
+    today_time = today_sch[today_sch[1] <= current_time].tail(1)
+    lesson = df.loc[today_time.index][120].values[0]
+    if lesson != float('nan'):
+        lesson = 'Окно'
+
+    return lesson
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=True)
