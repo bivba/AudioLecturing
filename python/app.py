@@ -27,7 +27,7 @@ from utils import *
 merge_locks = {}
 merge_locks_lock = threading.Lock()
 
-locale.setlocale(locale.LC_TIME, "Russian_Russia.1251")
+locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 executor = ThreadPoolExecutor(max_workers=2)
 app = Flask(__name__)
 CORS(app)
@@ -35,7 +35,7 @@ CORS(app)
 
 print('loading model...')
 bot = TelegramBot()
-summary = Summariser()
+summary = Summariser(model_name='gemini-flash-latest')
 print('model loaded')
 
 vector_db = get_vector_db()
@@ -66,7 +66,6 @@ df = pd.read_csv('schedule.csv', header=None)
 
 GROUP_COLUMN = 120
 
-lesson_name = get_lesson(df, GROUP_COLUMN)
 
 @app.route('/start_recording', methods=['POST'])
 def start_recording_route():
@@ -107,6 +106,7 @@ def summarize_audio():
 
 @app.route('/merge', methods=['POST'])
 def merge_summaries():
+    lesson_name = get_lesson(df, GROUP_COLUMN)
     global video_recorder
     session_id = request.form.get('session_id')
     audio_file = request.files.get('audio')
@@ -168,11 +168,15 @@ def merge_summaries():
         combined_text = transcript + " " + full_transcript
         result = summary.summarize_text(combined_text, screenshots)
 
-        #vector_db.add_document(result, metadata={'lesson': lesson_name, 'date': str(datetime.datetime.now())})
+        vector_db.add_document(result, metadata={'lesson': lesson_name, 'date': str(datetime.datetime.now())})
+
+        now = datetime.datetime.now()
+        current_date = now.strftime("%d.%m")
 
         if telegram_loop is not None:
             future = asyncio.run_coroutine_threadsafe(
-                bot.send_message(result, f"английский.md"),
+                bot.send_message(result, f"{lesson_name}_{current_date}.md"),
+                #bot.send_message(result, f'Английский_видео.md'), 
                 telegram_loop
             )
             try:

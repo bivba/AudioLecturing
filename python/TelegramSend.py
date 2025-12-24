@@ -39,12 +39,13 @@ class TelegramBot:
             print("Bot commands set successfully.")
         except Exception as e:
             print(f"Failed to set commands: {e}")
-
+    
     async def send_message(self, text, filename):
         try:
             file_to_send = BytesIO(text.encode('utf-8'))
             file_to_send.name = filename
-            await self.bot.send_document(chat_id=self.id, document=file_to_send, parse_mode='Markdown')
+            id = os.getenv("TELEGRAM_CHANNEL")
+            await self.bot.send_document(chat_id=id, document=file_to_send, parse_mode='Markdown')
             print("Successfully sent transcription to Telegram.")
         except Exception as e:
             print(f"Error sending message to Telegram: {e}")

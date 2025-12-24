@@ -1,8 +1,4 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_cohere import ChatCohere
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
-from langchain.schema.messages import HumanMessage
 import os
 import re
 
@@ -48,6 +44,8 @@ class Extractor:
         ### Output
         - Produce only the Markdown-formatted answer in Russian—no additional commentary, prompts, or explanations.
         - Ensure the response is educational, clear, and valuable for students.
+        - If there is a question that requires a short answer, provide it firstly, then follow with a detailed explanation based on the context.
+        - If there is a question with a choice of answers, provide the most relevant one based on the context firslty, then make an explanation.
         Lecture Notes:
         {context}
 

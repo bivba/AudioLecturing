@@ -10,7 +10,7 @@ class VideoRecorder:
     def __init__(self, out_dir):
         os.makedirs(out_dir, exist_ok=True)
         #self.sct = mss.mss()
-        self.monitor = mss.mss().monitors[2]
+        self.monitor = mss.mss().monitors[1]
         self.last = None
         self.index = 0
         self.out = out_dir

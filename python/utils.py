@@ -5,6 +5,7 @@ import re
 import pandas as pd
 import shutil
 import subprocess
+import locale
 
 
 def get_lesson(df, group_column=120):
@@ -37,16 +38,14 @@ def get_lesson(df, group_column=120):
                 lesson = df.iloc[idx, column]
                 if pd.notna(lesson) and str(lesson).strip():
                     lessons.append(str(lesson).strip())
-        
-        # Return the first non-empty lesson found
+
         if lessons:
             return lessons[0]
         return None
 
     try:
-        # Determine current week parity (you might need to adjust this based on your school's week numbering)
         current_week = datetime.datetime.now().isocalendar()[1]
-        is_odd_week = (current_week) % 2 == 1  # True for odd weeks, False for even weeks
+        is_odd_week = (current_week + 1) % 2 == 1
         
         print(f"Current week: {current_week}, is_odd_week: {is_odd_week}")
 
@@ -54,14 +53,12 @@ def get_lesson(df, group_column=120):
         df_time = df[[0, 1]].copy()
         df_time.loc[:, 0] = df_time[0].ffill()
         df_time.loc[:, 1] = df_time[1].ffill()
-        
-        # Get current time info
+
         now = datetime.datetime.now()
         today = now.strftime("%A").capitalize()
         current_time = now.strftime("%H:%M")
         current_time_obj = datetime.datetime.strptime(current_time, "%H:%M").time()
-        
-        # Find today's schedule
+
         today_sch = df_time[df_time[0] == today].copy()
         if today_sch.empty:
             print(f"No schedule found for {today}")
@@ -96,11 +93,11 @@ def get_lesson(df, group_column=120):
         
         if is_odd_week:
             # Check current row first, then next row as fallback
-            possible_rows = [slot_index, slot_index + 1]
+            possible_rows = [slot_index - 1, slot_index]
         else:
             # Check next row first, then current row as fallback
-            possible_rows = [slot_index + 1, slot_index]
-        
+            possible_rows = [slot_index, slot_index - 1]
+
         # Try to get lesson from the determined rows
         lesson = get_lesson_from_rows(possible_rows, group_column)
         
@@ -108,18 +105,7 @@ def get_lesson(df, group_column=120):
             print(f"Found lesson: {lesson}")
             return lesson
         else:
-            # Final fallback: check a wider range around the time slot
-            fallback_rows = [slot_index - 1, slot_index, slot_index + 1, slot_index + 2]
-            fallback_rows = [r for r in fallback_rows if r >= 0]  # Remove negative indices
-            
-            lesson = get_lesson_from_rows(fallback_rows, group_column)
-            
-            if lesson:
-                print(f"Found lesson with fallback: {lesson}")
-                return lesson
-            else:
-                print("No lesson found")
-                return 'Окно'
+            return 'Окно'
                 
     except Exception as e:
         print(f"Error in get_lesson: {e}")

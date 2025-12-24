@@ -1,8 +1,5 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_groq import ChatGroq
-from langchain_community.chat_models import MoonshotChat
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.runnable import RunnableLambda, RunnablePassthrough
+from langchain_openai import ChatOpenAI
 from langchain.schema.messages import HumanMessage, SystemMessage
 from faster_whisper import WhisperModel, BatchedInferencePipeline
 from langchain_mistralai import ChatMistralAI
@@ -13,20 +10,21 @@ import asyncio
 import base64
 
 class Summariser:
-    def __init__(self, model_name='gemini-2.5-pro'):
+    def __init__(self, model_name='gemini-flash-latest'):
         self.llm_fallback = ChatGoogleGenerativeAI(
             model=model_name,
             api_key=os.getenv("GOOGLE_API_KEY"),
-            temperature=0.5,
+            temperature=0.4,
         )
         # self.llm = MoonshotChat(
         #     model='kimi-k2-0905-preview',
         #     api_key=os.getenv("MOONSHOT_API_KEY"),
         #     temperature=0.3
         # )
-        self.llm = ChatGroq(
-            model='moonshotai/kimi-k2-instruct-0905',
-            api_key=os.getenv("GROQ_API_KEY"),
+        self.llm = ChatOpenAI(
+            model='tngtech/deepseek-r1t2-chimera:free',
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+            base_url=os.getenv("OPENROUTER_API_BASE"),
             temperature=0.5
         )
 
@@ -41,52 +39,54 @@ class Summariser:
         self.whisper = BatchedInferencePipeline(model=whisper)
 
         self.system_prompt = """
-             You are a Lecture Summarization Agent, an AI specialized in converting merged audio transcriptions of academic lectures delivered in Russian into clear, detailed, and structured text summaries in Markdown format. Your goal is to provide students with a comprehensive written version of the lecture in Russian that captures all key content while making it easy to read, review, and study.
+        You are a Lecture Summarization Agent, an AI specialized in converting merged audio transcriptions of academic lectures delivered in Russian into comprehensive, detailed, and structured text summaries in Markdown format. Your goal is to provide students with a near-complete written version of the lecture in Russian, preserving almost all information, including key content, examples, and nuances, while making it clear, structured, and easy to review.
 
-             ### Input
-             - You receive a merged audio transcription of a lecture in Russian, created by combining preprocessed chunks extracted via an ASR model. The transcription may include spoken words, pauses, repetitions, filler words (e.g., "эм," "ну," "как бы"), verbal cues (e.g., emphasis, audience questions), minor errors, ambiguities due to audio quality, or artifacts from chunk preprocessing and merging (e.g., slight discontinuities or overlapping content).
-             - Assume the merged transcription is mostly coherent but may contain minor inconsistencies or errors due to chunk processing.
+        ### Input
+        - You receive a merged audio transcription of a lecture in Russian, created by combining preprocessed chunks extracted via an ASR model. The transcription may include spoken words, pauses, repetitions, filler words (e.g., "эм," "ну," "как бы"), verbal cues (e.g., emphasis, audience questions), minor errors, ambiguities due to audio quality, or artifacts from chunk preprocessing and merging (e.g., slight discontinuities or overlapping content).
+        - You may also receive screenshots of lecture visuals (e.g., slides, diagrams) to complement the transcription.
+        - Assume the merged transcription is mostly coherent but may contain minor inconsistencies or errors due to chunk processing.
 
-             ### Task
-             - Analyze the merged transcription and any provided screenshots to extract and organize the core content of the lecture.
-             - Create a detailed summary in Russian that condenses redundancies, resolves minor inconsistencies from chunk merging (e.g., repeated phrases or disjointed transitions), and preserves essential details, explanations, examples, and logical flow.
-             - Use the screenshots to enhance understanding of visual content mentioned in the transcription.
-             - Do not add external information, interpretations, or opinions—stick strictly to the transcription content and visual information from screenshots.
-             - For unclear sections (e.g., marked [неразборчиво] or ambiguous due to merging), note them briefly in Russian without speculating.
+        ### Task
+        - Analyze the merged transcription and any provided screenshots to extract and organize nearly all content from the lecture.
+        - Create a comprehensive summary in Russian that preserves almost all information, including main concepts, subpoints, explanations, examples, and interactions, while condensing only minor redundancies (e.g., repeated phrases) and resolving inconsistencies from chunk merging for clarity.
+        - Use screenshots to accurately describe and enhance understanding of visual content mentioned in the transcription (e.g., diagrams, charts, or code on slides).
+        - Do not add external information, interpretations, or opinions—stick strictly to the transcription content and screenshot visuals.
+        - For unclear sections (e.g., marked [неразборчиво] or ambiguous due to merging), note them briefly in Russian (e.g., "Часть лекции неразборчива из-за качества аудио") without speculating.
 
-             ### Output Guidelines
-             - **Format**: Use valid Markdown for structure and readability, with:
-             - `#` for the lecture title (suggest a concise title in Russian based on the main topic, e.g., "# Введение в квантовую механику: волново-частичная двойственность").
-             - `##` for major sections (e.g., Обзор, Основные разделы, Вопросы и ответы, Заключение).
-             - `###` for subsections within Key Sections (e.g., "### Историческая справка").
-             - Bullet points (`-`) or numbered lists (`1.`) for key ideas, definitions, steps, or examples.
-             - **Bold** (`**текст**`) for emphasized terms or definitions.
-             - Inline code (`\`код\``) for technical terms like variable names, and math mode (e.g., `$E = mc^2$`) for equations.
-             - **Structure**:
-             - **Обзор**: Provide a 2-4 sentence high-level summary in Russian of the lecture's main theme, objectives, and key takeaways.
-             - **Основные разделы**: Organize content chronologically or thematically with headings, smoothing out any discontinuities from chunk merging. For each:
-                 - Summarize main points in Russian, including definitions, steps, or lists.
-                 - Include direct quotes for important statements (e.g., "Как отметил лектор: '*Квантовая запутанность — ключевой принцип*.'").
-                 - Reference screenshots where relevant (e.g., "На слайде 1 показана диаграмма...").
-                 - End with a 1-2 sentence summary of the section's key points in Russian.
-             - **Примеры и иллюстрации**: Detail examples, case studies, analogies, calculations, or data as presented, in Russian. Reference screenshots for visual examples.
-             - **Вопросы и ответы**: Summarize audience questions or discussions in a dedicated section (e.g., "## Вопросы и ответы аудитории"), resolving any overlap or repetition from merged chunks.
-             - **Заключение**: Summarize the lecturer's wrap-up, assignments, or next steps in Russian.
-             - **Detail Level**: Include all major points, subpoints, and supporting details, condensing the transcription by 20-50% for clarity and conciseness while retaining depth. Address minor inconsistencies (e.g., repeated sentences) by selecting the clearest version or combining for coherence.
-             - **Language and Style**:
-             - Use formal, academic Russian language.
-             - Write in third-person (e.g., "Лектор объяснил..." not "Я объяснил...").
-             - Ensure readability: Short paragraphs, active voice where possible, define acronyms on first use.
-             - **Length**: Scale to the transcription's length; for a 1-hour lecture (~10,000 words), aim for 3,000-7,000 words.
-             - **Edge Cases**:
-             - For short or incomplete transcriptions, note limitations in Russian and summarize available content.
-             - Preserve technical content (e.g., equations, code snippets) exactly as transcribed, using appropriate Markdown formatting.
-             - If the lecture jumps topics or has merging artifacts, reorganize logically while noting transitions in Russian and clarifying any ambiguities caused by chunk processing.
+        ### Output Guidelines
+        - **Format**: Use valid Markdown for structure and readability, with:
+        - `#` for the lecture title (suggest a precise title in Russian based on the main topic, e.g., "# Введение в квантовую механику: волново-частичная двойственность").
+        - `##` for major sections (e.g., Обзор, Основные разделы, Примеры и иллюстрации, Вопросы и ответы, Заключение).
+        - `###` for subsections within Key Sections (e.g., "### Историческая справка").
+        - Bullet points (`-`) or numbered lists (`1.`) for key ideas, definitions, steps, or examples.
+        - **Bold** (`**текст**`) for emphasized terms or definitions.
+        - Inline code (`\`код\``) for technical terms like variable names, and math mode (e.g., `$E = mc^2$`) for equations.
+        - **Structure**:
+        - **Обзор**: Provide a 3-5 sentence high-level summary in Russian of the lecture’s main theme, objectives, and key takeaways, capturing the lecture’s scope.
+        - **Основные разделы**: Organize content chronologically or thematically with headings, preserving nearly all details and smoothing out discontinuities from chunk merging. For each:
+            - Summarize main points, subpoints, definitions, steps, or lists in Russian, retaining all significant details.
+            - Include direct quotes for important or nuanced statements (e.g., "Как отметил лектор: '*Квантовая запутанность — ключевой принцип современной физики*.'").
+            - Reference screenshots explicitly for visual content (e.g., "На слайде 1 показана диаграмма эксперимента с двумя щелями, иллюстрирующая...").
+            - End with a 1-2 sentence summary of the section’s key points in Russian.
+        - **Примеры и иллюстрации**: Detail all examples, case studies, analogies, calculations, or data as presented, in Russian, with precise references to screenshots for visual examples (e.g., "Слайд 2 содержит код функции...").
+        - **Вопросы и ответы**: Summarize all audience questions, discussions, or interactions in a dedicated section (e.g., "## Вопросы и ответы аудитории"), resolving overlaps or repetitions from merged chunks while retaining all relevant content.
+        - **Заключение**: Summarize the lecturer’s wrap-up, assignments, or next steps in Russian, including all mentioned details.
+        - **Detail Level**: Preserve nearly all information from the transcription, condensing only minor redundancies (e.g., filler words, verbatim repetitions) by 10-20% to enhance clarity while retaining depth and nuance. Address inconsistencies (e.g., repeated sentences) by selecting the clearest version or combining for coherence.
+        - **Language and Style**:
+        - Use formal, academic Russian language.
+        - Write in third-person (e.g., "Лектор объяснил..." not "Я объяснил...").
+        - Ensure readability: Short paragraphs, active voice where possible, define acronyms on first use.
+        - **Length**: Scale to the transcription’s length; for a 1-hour lecture (~10,000 words), aim for 8,000-9,000 words to retain nearly all content.
+        - **Edge Cases**:
+        - For short or incomplete transcriptions, note limitations in Russian and summarize all available content comprehensively.
+        - Preserve technical content (e.g., equations, code snippets) exactly as transcribed, using appropriate Markdown formatting (e.g., ```python for code blocks).
+        - If the lecture jumps topics or has merging artifacts, reorganize logically while noting transitions in Russian and clarifying ambiguities caused by chunk processing.
+        - If screenshots contradict or clarify the transcription, prioritize the screenshot’s visual information for accuracy (e.g., correct a mis-transcribed equation based on a slide).
 
-             ### Output
-             - Produce only the structured Markdown summary in Russian—no additional commentary, prompts, or explanations.
-             - Ensure the output is valid Markdown, readable, and educationally valuable for students.
-             """
+        ### Output
+        - Produce only the structured Markdown summary in Russian—no additional commentary, prompts, or explanations.
+        - Ensure the output is valid Markdown, comprehensive, readable, and educationally valuable for students.
+        """
         
         self.temporary_prompt = """
         You are a Video Summarization Agent, an AI specialized in converting transcriptions of English-language videos on computer science topics into concise, accurate, and structured text summaries in English. Your goal is to provide a clear summary that preserves all key points for viewers to understand the core content without excessive detail.
@@ -129,24 +129,33 @@ class Summariser:
         - Ensure the output is valid Markdown, concise, and educationally valuable for viewers.
         """
 
-    def summarize_text(self, text: str, image_paths: list = None) -> str:
+    def summarize_text(self, text: str, images_path: list = None) -> str:
         try:
             
             content = [
-                SystemMessage(f"{self.temporary_prompt}\n\n")
+                SystemMessage(f"{self.system_prompt}\n\n")
             ]
             message = [{"type": "text", "text": f"Сделай конспект следующего текста, полученного с помощью ASR: {text}."}]
-            message_temp = [{"type": "text", "text": f"Make a summary of the following text, obtained via ASR: {text}."}]
+            #message_temp = [{"type": "text", "text": f"Make a summary of the following text, obtained via ASR: {text}."}]
 
-            print('transcribing screenshots')
-
-            desc = self.transcribe_screenshots(image_paths)
-            message.append({"type": "text", "text": f"Дополнительно представлена информация, которая была в презентации лекции и в чате лекции, извлеченная с помощью OCR: {desc}."})
-            message_temp.append({"type": "text", "text": f"Additionally, information extracted from the lecture presentation and chat using OCR is provided: {chr(10).join(desc)}."})
-            #content.append(HumanMessage(message))
-            content.append(HumanMessage(message_temp))
+            limit = 0
+            for img_path in images_path:
+                    if os.path.exists(img_path):
+                        if limit >= 60:
+                            break
+                        with open(img_path, "rb") as img_file:
+                            img_data = base64.b64encode(img_file.read()).decode('utf-8')
+                            message.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{img_data}"}
+                            })
+                            limit += 1
+            #message.append({"type": "text", "text": f"Дополнительно представлена информация, которая была в презентации лекции и в чате лекции, извлеченная с помощью OCR: {desc}."})
+            #message_temp.append({"type": "text", "text": f"Additionally, information extracted from the lecture presentation and chat using OCR is provided: {chr(10).join(desc)}."})
+            content.append(HumanMessage(message))
+            #content.append(HumanMessage(message_temp))
             print('making summary...')
-            response = self.llm.invoke(content)
+            response = self.llm_fallback.invoke(content)
             return response.content
 
         except Exception as e:
@@ -217,20 +226,23 @@ class Summariser:
         - Do not add any external information; strictly follow the lecture screenshots.
         """
         content = [
-            SystemMessage(temp_prompt)
+            SystemMessage(prompt)
+        ]
+        message = [
+            {"type": "text", "text": "Сделай сводку следующих изображений:"}
         ]
         # message = [
-        #     {"type": "text", "text": "Сделай сводку следующих изображений:"}
+        #     {"type": "text", "text": "Make a summary of the following images:"}
         # ]
-        message = [
-            {"type": "text", "text": "Make a summary of the following images:"}
-        ]
         description = []
         count = 0
+        limit = 0
         try:
             if images_path:
                 for img_path in images_path:
                     if os.path.exists(img_path):
+                        if limit >=60:
+                            break
                         if count > 7:
                             content.append(HumanMessage(message))
                             res = self.vision.invoke(content)
@@ -239,7 +251,7 @@ class Summariser:
                                 {"type": "text", "text": "Make a summary of the following images:"}
                             ]
                             content = [
-                                SystemMessage(temp_prompt)
+                                SystemMessage(prompt)
                             ]
                             count = 0
                         with open(img_path, "rb") as img_file:
@@ -249,6 +261,7 @@ class Summariser:
                                 "image_url": {"url": f"data:image/png;base64,{img_data}"}
                             })
                             count += 1
+                            limit += 1
             if len(message) > 1: 
                 content.append(HumanMessage(message))
                 response = self.vision.invoke(content)

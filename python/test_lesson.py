@@ -3,6 +3,8 @@ import datetime
 import locale
 import re
 
+locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
+
 # Copy the improved get_lesson function for testing
 def test_get_lesson():
     """Test the improved get_lesson function"""
@@ -32,6 +34,7 @@ def test_get_lesson():
 
         def get_lesson_from_rows(row_indices, column):
             lessons = []
+            print(df.iloc[row_indices, column])
             for idx in row_indices:
                 if idx < len(df) and column < len(df.columns):
                     lesson = df.iloc[idx, column]
@@ -53,7 +56,8 @@ def test_get_lesson():
             
             now = datetime.datetime.now()
             today = now.strftime("%A").capitalize()
-            current_time = now.strftime("%H:%M")
+            #current_time = now.strftime("%H:%M")
+            current_time = "15:20"  # For testing purposes
             current_time_obj = datetime.datetime.strptime(current_time, "%H:%M").time()
             
             print(f"Today: {today}, Current time: {current_time}")
@@ -82,9 +86,9 @@ def test_get_lesson():
             print(f"Found time slot at index: {slot_index}")
             
             if is_odd_week:
-                possible_rows = [slot_index, slot_index + 1]
+                possible_rows = [slot_index - 1, slot_index]
             else:
-                possible_rows = [slot_index + 1, slot_index]
+                possible_rows = [slot_index, slot_index - 1]
             
             lesson = get_lesson_from_rows(possible_rows, group_column)
             
@@ -92,17 +96,7 @@ def test_get_lesson():
                 print(f"Found lesson: {lesson}")
                 return lesson
             else:
-                fallback_rows = [slot_index - 1, slot_index, slot_index + 1, slot_index + 2]
-                fallback_rows = [r for r in fallback_rows if r >= 0]
-                
-                lesson = get_lesson_from_rows(fallback_rows, group_column)
-                
-                if lesson:
-                    print(f"Found lesson with fallback: {lesson}")
-                    return lesson
-                else:
-                    print("No lesson found")
-                    return 'Окно'
+                return 'Okno'
                     
         except Exception as e:
             print(f"Error in get_lesson: {e}")
@@ -120,5 +114,4 @@ def test_get_lesson():
     return lesson
 
 if __name__ == "__main__":
-    locale.setlocale(locale.LC_TIME, "Russian_Russia.1251")
     test_get_lesson()
