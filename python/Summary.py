@@ -10,7 +10,7 @@ import asyncio
 import base64
 
 class Summariser:
-    def __init__(self, model_name='gemini-flash-latest'):
+    def __init__(self, model_name='gemini-3.1-flash-lite-preview'):
         self.llm_fallback = ChatGoogleGenerativeAI(
             model=model_name,
             api_key=os.getenv("GOOGLE_API_KEY"),
@@ -76,7 +76,7 @@ class Summariser:
         - Use formal, academic Russian language.
         - Write in third-person (e.g., "Лектор объяснил..." not "Я объяснил...").
         - Ensure readability: Short paragraphs, active voice where possible, define acronyms on first use.
-        - **Length**: Scale to the transcription’s length; for a 1-hour lecture (~10,000 words), aim for 8,000-9,000 words to retain nearly all content.
+        - **Length**: Scale to the transcription’s length; for a 1-hour lecture (~10,000 words).
         - **Edge Cases**:
         - For short or incomplete transcriptions, note limitations in Russian and summarize all available content comprehensively.
         - Preserve technical content (e.g., equations, code snippets) exactly as transcribed, using appropriate Markdown formatting (e.g., ```python for code blocks).
